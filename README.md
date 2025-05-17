@@ -46,7 +46,7 @@ The application uses the Dracula palette:
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/dracula-todo.git
+git clone https://github.com/yourusername/dracula-todo.git](https://github.com/ArduRadioKot/F-doAPP.git
 ```
 
 2. Open the project in Xcode 15+
