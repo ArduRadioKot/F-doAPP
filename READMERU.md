@@ -45,7 +45,7 @@
 
 1. Клонируйте репозиторий:
 ```bash
-git clone https://github.com/yourusername/dracula-todo.git
+git clone https://github.com/yourusername/dracula-todo.git](https://github.com/ArduRadioKot/F-doAPP.git
 ```
 
 2. Откройте проект в Xcode 15+
