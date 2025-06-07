@@ -8,17 +8,44 @@
 import SwiftUI
 
 // Todo model
+enum UrgencyLevel: String, Codable, CaseIterable {
+    case today = "Сегодня"
+    case thisWeek = "Эта неделя"
+    case thisMonth = "Этот месяц"
+    case none = "Без срочности"
+    
+    var color: Color {
+        switch self {
+        case .today: return .red
+        case .thisWeek: return .orange
+        case .thisMonth: return .yellow
+        case .none: return .gray
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .today: return "exclamationmark.circle.fill"
+        case .thisWeek: return "exclamationmark.triangle.fill"
+        case .thisMonth: return "exclamationmark.square.fill"
+        case .none: return "circle"
+        }
+    }
+}
+
 struct Todo: Identifiable, Codable {
     let id: UUID
     var title: String
     var isCompleted: Bool
     var notes: String
+    var urgency: UrgencyLevel
     
-    init(id: UUID = UUID(), title: String, isCompleted: Bool = false, notes: String = "") {
+    init(id: UUID = UUID(), title: String, isCompleted: Bool = false, notes: String = "", urgency: UrgencyLevel = .none) {
         self.id = id
         self.title = title
         self.isCompleted = isCompleted
         self.notes = notes
+        self.urgency = urgency
     }
 }
 
@@ -105,22 +132,42 @@ extension Color {
     }
 }
 
+enum Tab: String, CaseIterable {
+    case all = "Задачи"
+    case today = "Сегодня"
+    case week = "Неделя"
+}
+
 struct ContentView: View {
     @AppStorage("todos") private var todosData: Data = Data()
     @State private var todos: [Todo] = []
     @State private var newTodoTitle: String = ""
     @State private var newTodoNotes: String = ""
+    @State private var selectedUrgency: UrgencyLevel = .none
     @State private var showAddTodoSheet: Bool = false
+    @State private var selectedTab: Tab = .all
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var theme = ThemeManager()
     
+    var filteredTodos: [Todo] {
+        switch selectedTab {
+        case .all:
+            return todos
+        case .today:
+            return todos.filter { $0.urgency == .today }
+        case .week:
+            return todos.filter { $0.urgency == .thisWeek }
+        }
+    }
+    
     var body: some View {
         NavigationStack {
+            // Content
             ZStack {
                 theme.background
                     .ignoresSafeArea()
                 
-                if todos.isEmpty {
+                if filteredTodos.isEmpty {
                     VStack(spacing: 24) {
                         Image(systemName: "list.clipboard")
                             .font(.system(size: 70))
@@ -138,7 +185,7 @@ struct ContentView: View {
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 8) {
-                            ForEach(todos) { todo in
+                            ForEach(filteredTodos) { todo in
                                 TodoRowView(todo: todo, theme: theme, onDelete: {
                                     withAnimation {
                                         if let index = todos.firstIndex(where: { $0.id == todo.id }) {
@@ -161,11 +208,28 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationTitle("Задачи")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(theme.background, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 24) {
+                        ForEach(Tab.allCases, id: \.self) {
+                            tab in
+                            Button(action: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    selectedTab = tab
+                                }
+                            }) {
+                                Text(tab.rawValue)
+                                    .font(selectedTab == tab ? .largeTitle.weight(.bold) : .system(size: 15, weight: .regular))
+                                    .foregroundStyle(selectedTab == tab ? .white : Color(hex: "43475A"))
+                            }
+                        }
+                    }
+                }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { 
                         withAnimation {
@@ -180,7 +244,12 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showAddTodoSheet) {
-                AddTodoView(newTodoTitle: $newTodoTitle, newTodoNotes: $newTodoNotes, theme: theme) {
+                AddTodoView(
+                    newTodoTitle: $newTodoTitle,
+                    newTodoNotes: $newTodoNotes,
+                    selectedUrgency: $selectedUrgency,
+                    theme: theme
+                ) {
                     withAnimation {
                         addTodo()
                         showAddTodoSheet = false
@@ -212,10 +281,11 @@ struct ContentView: View {
     
     private func addTodo() {
         guard !newTodoTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        let todo = Todo(title: newTodoTitle, notes: newTodoNotes)
+        let todo = Todo(title: newTodoTitle, notes: newTodoNotes, urgency: selectedUrgency)
         todos.append(todo)
         newTodoTitle = ""
         newTodoNotes = ""
+        selectedUrgency = .none
         saveTodos()
     }
 }
@@ -223,25 +293,51 @@ struct ContentView: View {
 struct NotesView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var notes: String
+    @Binding var title: String
     let theme: ThemeManager
     
     var body: some View {
         NavigationStack {
             VStack(spacing: 24) {
-                TextEditor(text: $notes)
-                    .scrollContentBackground(.hidden)
-                    .background(theme.secondaryBackground)
-                    .cornerRadius(8)
-                    .padding()
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(theme.textSecondary.opacity(0.2), lineWidth: 1)
-                    }
+                VStack(spacing: 16) {
+                    TextField("Название задачи", text: $title)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .background {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(theme.secondaryBackground)
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(theme.textSecondary.opacity(0.2), lineWidth: 1)
+                        }
+                        .font(.title3)
+                    
+                    TextEditor(text: $notes)
+                        .scrollContentBackground(.hidden)
+                        .background {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(theme.secondaryBackground)
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(theme.textSecondary.opacity(0.2), lineWidth: 1)
+                        }
+                        .overlay(alignment: .topLeading) {
+                            if notes.isEmpty {
+                                Text("Заметки (необязательно)")
+                                    .foregroundStyle(theme.textSecondary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                            }
+                        }
+                }
+                .padding(.horizontal)
                 
                 Spacer()
             }
             .padding(.top, 24)
-            .navigationTitle("Заметки")
+            .navigationTitle("Редактировать задачу")
             .navigationBarTitleDisplayMode(.inline)
             .background(theme.background)
             .toolbar {
@@ -266,6 +362,7 @@ struct TodoRowView: View {
     @State private var isSwiped = false
     @State private var showNotes = false
     @State private var editedNotes: String
+    @State private var editedTitle: String
     
     init(todo: Todo, theme: ThemeManager, onDelete: @escaping () -> Void, onUpdate: @escaping (Todo) -> Void) {
         self.todo = todo
@@ -273,6 +370,7 @@ struct TodoRowView: View {
         self.onDelete = onDelete
         self.onUpdate = onUpdate
         _editedNotes = State(initialValue: todo.notes)
+        _editedTitle = State(initialValue: todo.title)
     }
     
     var body: some View {
@@ -298,6 +396,13 @@ struct TodoRowView: View {
             
             // Todo item
             HStack(spacing: 16) {
+                if todo.urgency != .none {
+                    Rectangle()
+                        .fill(todo.urgency.color)
+                        .frame(width: 4)
+                        .cornerRadius(2)
+                }
+                
                 Button(action: {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                         var updatedTodo = todo
@@ -374,10 +479,11 @@ struct TodoRowView: View {
                     }
             )
             .sheet(isPresented: $showNotes) {
-                NotesView(notes: $editedNotes, theme: theme)
+                NotesView(notes: $editedNotes, title: $editedTitle, theme: theme)
                     .onDisappear {
                         var updatedTodo = todo
                         updatedTodo.notes = editedNotes
+                        updatedTodo.title = editedTitle
                         onUpdate(updatedTodo)
                     }
             }
@@ -389,6 +495,7 @@ struct AddTodoView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var newTodoTitle: String
     @Binding var newTodoNotes: String
+    @Binding var selectedUrgency: UrgencyLevel
     let theme: ThemeManager
     let onAdd: () -> Void
     
@@ -428,6 +535,37 @@ struct AddTodoView: View {
                                     .padding(.vertical, 12)
                             }
                         }
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Срочность")
+                            .font(.subheadline)
+                            .foregroundStyle(theme.textSecondary)
+                        
+                        HStack(spacing: 8) {
+                            ForEach(UrgencyLevel.allCases, id: \.self) { urgency in
+                                Button(action: {
+                                    selectedUrgency = urgency
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: urgency.icon)
+                                        Text(urgency.rawValue)
+                                    }
+                                    .font(.caption)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background {
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .fill(selectedUrgency == urgency ? urgency.color.opacity(0.2) : theme.secondaryBackground)
+                                    }
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(selectedUrgency == urgency ? urgency.color : theme.textSecondary.opacity(0.2), lineWidth: 1)
+                                    }
+                                    .foregroundStyle(selectedUrgency == urgency ? urgency.color : theme.textSecondary)
+                                }
+                            }
+                        }
+                    }
                 }
                 .padding(.horizontal)
                 

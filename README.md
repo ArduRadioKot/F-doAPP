@@ -42,7 +42,7 @@ The application uses the Dracula palette:
 | Green | #50fa7b | Completed tasks |
 | Red | #ff5555 | Delete button |
 
-## , Installation
+## Installation
 
 1. Clone the repository:
 ```bash
@@ -55,9 +55,9 @@ git clone https://github.com/yourusername/dracula-todo.git](https://github.com/A
 
 ## 🚀 What's next?
 
-- [ ] Adding chips (calendar, etc.)
-- [ ] Adding note functionality
-- [ ] Sorting issues
+- [x] Adding chips (calendar, etc.)
+- [x] Adding note functionality
+- [x] Sorting issues
 - [ ] Widget for the home screen
 - [ ] iCloud sync
 - [ ] Widgets for Apple Watch
