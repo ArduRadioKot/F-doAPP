@@ -12,11 +12,13 @@ struct Todo: Identifiable, Codable {
     let id: UUID
     var title: String
     var isCompleted: Bool
+    var notes: String
     
-    init(id: UUID = UUID(), title: String, isCompleted: Bool = false) {
+    init(id: UUID = UUID(), title: String, isCompleted: Bool = false, notes: String = "") {
         self.id = id
         self.title = title
         self.isCompleted = isCompleted
+        self.notes = notes
     }
 }
 
@@ -107,6 +109,7 @@ struct ContentView: View {
     @AppStorage("todos") private var todosData: Data = Data()
     @State private var todos: [Todo] = []
     @State private var newTodoTitle: String = ""
+    @State private var newTodoNotes: String = ""
     @State private var showAddTodoSheet: Bool = false
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var theme = ThemeManager()
@@ -177,7 +180,7 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showAddTodoSheet) {
-                AddTodoView(newTodoTitle: $newTodoTitle, theme: theme) {
+                AddTodoView(newTodoTitle: $newTodoTitle, newTodoNotes: $newTodoNotes, theme: theme) {
                     withAnimation {
                         addTodo()
                         showAddTodoSheet = false
@@ -209,10 +212,48 @@ struct ContentView: View {
     
     private func addTodo() {
         guard !newTodoTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        let todo = Todo(title: newTodoTitle)
+        let todo = Todo(title: newTodoTitle, notes: newTodoNotes)
         todos.append(todo)
         newTodoTitle = ""
+        newTodoNotes = ""
         saveTodos()
+    }
+}
+
+struct NotesView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var notes: String
+    let theme: ThemeManager
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                TextEditor(text: $notes)
+                    .scrollContentBackground(.hidden)
+                    .background(theme.secondaryBackground)
+                    .cornerRadius(8)
+                    .padding()
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(theme.textSecondary.opacity(0.2), lineWidth: 1)
+                    }
+                
+                Spacer()
+            }
+            .padding(.top, 24)
+            .navigationTitle("Заметки")
+            .navigationBarTitleDisplayMode(.inline)
+            .background(theme.background)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Готово") {
+                        dismiss()
+                    }
+                    .foregroundStyle(theme.accent)
+                }
+            }
+        }
+        .foregroundStyle(theme.textPrimary)
     }
 }
 
@@ -223,6 +264,16 @@ struct TodoRowView: View {
     let onUpdate: (Todo) -> Void
     @State private var offset: CGFloat = 0
     @State private var isSwiped = false
+    @State private var showNotes = false
+    @State private var editedNotes: String
+    
+    init(todo: Todo, theme: ThemeManager, onDelete: @escaping () -> Void, onUpdate: @escaping (Todo) -> Void) {
+        self.todo = todo
+        self.theme = theme
+        self.onDelete = onDelete
+        self.onUpdate = onUpdate
+        _editedNotes = State(initialValue: todo.notes)
+    }
     
     var body: some View {
         ZStack {
@@ -260,17 +311,36 @@ struct TodoRowView: View {
                         .foregroundStyle(todo.isCompleted ? theme.completedColor : theme.textSecondary)
                 }
                 
-                Text(todo.title)
-                    .font(.body)
-                    .strikethrough(todo.isCompleted)
-                    .foregroundStyle(todo.isCompleted ? theme.textSecondary : theme.textPrimary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(todo.title)
+                        .font(.body)
+                        .strikethrough(todo.isCompleted)
+                        .foregroundStyle(todo.isCompleted ? theme.textSecondary : theme.textPrimary)
+                    
+                    if !todo.notes.isEmpty {
+                        Text(todo.notes)
+                            .font(.caption)
+                            .foregroundStyle(theme.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
                 
                 Spacer()
                 
                 if !todo.isCompleted {
-                    Image(systemName: "chevron.left")
-                        .font(.caption)
-                        .foregroundStyle(theme.textSecondary)
+                    HStack(spacing: 12) {
+                        Button(action: {
+                            showNotes = true
+                        }) {
+                            Image(systemName: "note.text")
+                                .font(.caption)
+                                .foregroundStyle(theme.textSecondary)
+                        }
+                        
+                        Image(systemName: "chevron.left")
+                            .font(.caption)
+                            .foregroundStyle(theme.textSecondary)
+                    }
                 }
             }
             .padding(.vertical, 12)
@@ -303,6 +373,14 @@ struct TodoRowView: View {
                         }
                     }
             )
+            .sheet(isPresented: $showNotes) {
+                NotesView(notes: $editedNotes, theme: theme)
+                    .onDisappear {
+                        var updatedTodo = todo
+                        updatedTodo.notes = editedNotes
+                        onUpdate(updatedTodo)
+                    }
+            }
         }
     }
 }
@@ -310,30 +388,48 @@ struct TodoRowView: View {
 struct AddTodoView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var newTodoTitle: String
+    @Binding var newTodoNotes: String
     let theme: ThemeManager
     let onAdd: () -> Void
     
     var body: some View {
         NavigationStack {
             VStack(spacing: 24) {
-                TextField("Новая задача", text: $newTodoTitle)
-                    .textFieldStyle(.plain)
-                    .padding()
-                    .background {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(theme.secondaryBackground)
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(theme.textSecondary.opacity(0.2), lineWidth: 1)
-                    }
-                    .font(.title3)
-                    .padding(.horizontal)
-                    .submitLabel(.done)
-                    .onSubmit {
-                        onAdd()
-                        dismiss()
-                    }
+                VStack(spacing: 16) {
+                    TextField("Новая задача", text: $newTodoTitle)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .background {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(theme.secondaryBackground)
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(theme.textSecondary.opacity(0.2), lineWidth: 1)
+                        }
+                        .font(.title3)
+                    
+                    TextEditor(text: $newTodoNotes)
+                        .frame(height: 100)
+                        .scrollContentBackground(.hidden)
+                        .background {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(theme.secondaryBackground)
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(theme.textSecondary.opacity(0.2), lineWidth: 1)
+                        }
+                        .overlay(alignment: .topLeading) {
+                            if newTodoNotes.isEmpty {
+                                Text("Заметки (необязательно)")
+                                    .foregroundStyle(theme.textSecondary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                            }
+                        }
+                }
+                .padding(.horizontal)
                 
                 Spacer()
             }
